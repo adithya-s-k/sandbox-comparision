@@ -1,0 +1,107 @@
+from __future__ import annotations
+import json
+import sys
+from pathlib import Path
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+ROOT = Path(__file__).resolve().parents[1]
+RAW = ROOT / 'results' / 'raw'
+CH = ROOT / 'results' / 'charts'
+CH.mkdir(parents=True, exist_ok=True)
+COLOR = {'e2b': '#59a6ff', 'hf': '#ffa05c', 'mcp': '#7ddc6b'}
+PROVIDERS = ['e2b', 'hf', 'mcp']
+
+def load(bench, provider):
+    p = RAW / f'{bench}__{provider}.jsonl'
+    return [json.loads(l) for l in open(p)] if p.exists() else []
+
+def plot_b01():
+    fig, ax = plt.subplots(figsize=(8, 4))
+    metrics = ['p50', 'p90', 'p99']
+    width = 0.27
+    x = list(range(len(metrics)))
+    for i, prov in enumerate(PROVIDERS):
+        rows = [r for r in load('b01_boot_latency', prov) if r.get('ok')]
+        vals = []
+        for m in metrics:
+            tot = sorted([r['t_total_ms'] for r in rows])
+            if not tot:
+                vals.append(0)
+                continue
+            k = int(round({'p50': 0.5, 'p90': 0.9, 'p99': 0.99}[m] * (len(tot) - 1)))
+            vals.append(tot[k])
+        offset = (i - 1) * width
+        bars = ax.bar([xi + offset for xi in x], vals, width, label=prov, color=COLOR[prov])
+        for b, v in zip(bars, vals):
+            ax.text(b.get_x() + b.get_width() / 2, v, f'{v:.0f}ms', ha='center', va='bottom', fontsize=9)
+    ax.set_xticks(x)
+    ax.set_xticklabels(metrics)
+    ax.set_ylabel('boot→ready (ms)')
+    ax.set_title('B01 — Cold boot latency (create + first exec)')
+    ax.legend()
+    ax.set_yscale('log')
+    plt.tight_layout()
+    plt.savefig(CH / 'b01_boot_latency.png', dpi=130)
+    plt.close()
+    print(f"  wrote {CH / 'b01_boot_latency.png'}")
+
+def plot_b04():
+    Ns = [5, 20, 50]
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.5))
+    for prov in PROVIDERS:
+        f = RAW / f'b04_concurrent_create__{prov}.jsonl'
+        if not f.exists():
+            continue
+        rows = [json.loads(l)['summary'] for l in open(f)]
+        by_n = {r['n']: r for r in rows}
+        rates = [by_n[N]['success_rate'] * 100 if N in by_n else 0 for N in Ns]
+        p99s = [by_n[N]['t_ready_ms']['p99'] if N in by_n and by_n[N]['t_ready_ms'].get('p99') else 0 for N in Ns]
+        ax1.plot(Ns, rates, marker='o', linewidth=2.5, label=prov, color=COLOR[prov])
+        ax2.plot(Ns, p99s, marker='o', linewidth=2.5, label=prov, color=COLOR[prov])
+    ax1.set_xlabel('concurrent sandbox count N')
+    ax1.set_ylabel('success rate (%)')
+    ax1.set_title('B04 — Concurrent-create success rate')
+    ax1.set_ylim(0, 105)
+    ax1.grid(True, alpha=0.3)
+    ax1.legend()
+    ax2.set_xlabel('concurrent sandbox count N')
+    ax2.set_ylabel('p99 boot→ready (ms)')
+    ax2.set_title('B04 — Concurrent-create p99 boot time')
+    ax2.set_yscale('log')
+    ax2.grid(True, alpha=0.3)
+    ax2.legend()
+    plt.tight_layout()
+    plt.savefig(CH / 'b04_scaling.png', dpi=130)
+    plt.close()
+    print(f"  wrote {CH / 'b04_scaling.png'}")
+
+def plot_b03():
+    sizes = ['1KB', '64KB', '1MB', '10MB']
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.5))
+    for prov in PROVIDERS:
+        data = load('b03_io_throughput', prov)
+        if not data:
+            continue
+        rows = data[-1]['rows']
+        w = [r['write_mb_per_s'] for r in rows]
+        r = [r['read_mb_per_s'] for r in rows]
+        ax1.plot(sizes, w, marker='o', linewidth=2.5, label=prov, color=COLOR[prov])
+        ax2.plot(sizes, r, marker='o', linewidth=2.5, label=prov, color=COLOR[prov])
+    ax1.set_ylabel('MB/s')
+    ax1.set_title('B03 — write_file throughput')
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+    ax2.set_ylabel('MB/s')
+    ax2.set_title('B03 — read_file throughput')
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(CH / 'b03_io.png', dpi=130)
+    plt.close()
+    print(f"  wrote {CH / 'b03_io.png'}")
+if __name__ == '__main__':
+    plot_b01()
+    plot_b04()
+    plot_b03()
+    print('\nAll charts in', CH)
