@@ -138,6 +138,72 @@ product"* — not Jobs — is the right long-term sandbox primitive.
 
 ---
 
+## Max concurrency — how many can I hold at once? (B07 / B08)
+
+B01–B06 cap at N=50 and tear each sandbox down on ready, so they never coexist.
+B07/B08 measure the *true peak concurrent* ceiling: fan out N creates, **hold every
+one alive simultaneously** at a barrier, count how many the platform sustains, then
+tear all down. B07 targets **hf-sandbox (HF Jobs)**; B08 targets the **MCP endpoint**
+(single async event loop so the client isn't the bottleneck; fd limit raised).
+
+![Max concurrency](results/charts/concurrency.png)
+
+### B07 — hf-sandbox (HF Jobs) concurrent provisioning
+
+| N | Healthy | Success | Peak alive | Fan-out | Failure mode |
+|---|---|---|---|---|---|
+| 25 | 25/25 | **100%** | 25 | 33s | — |
+| 50 | 50/50 | **100%** | 50 | 65s | — |
+| 100 | 100/100 | **100%** | 100 | 103s | — |
+| 200 | 200/200 | **100%** | 200 | 90s | — |
+| **500** | **316/500** | **63%** | **316** | 307s | boot-timeout (never became healthy) |
+
+**~200 concurrent at 100%; cliff at 500.** The 184 failures at N=500 were *all*
+`never became healthy` boot-timeouts — **zero quota / 429 / auth errors.** It's a
+**soft scheduler-capacity limit**, not an account cap: 316 jobs *were* simultaneously
+alive, and the scheduler simply couldn't bring the rest to healthy inside the 300s
+window (boots arrive in waves). A longer health-wait would push the number up; the
+"healthy within 5 min" ceiling is ~200–300.
+
+### B08 — MCP endpoint concurrent sessions
+
+| N | Healthy | Success | Fan-out | Failure mode |
+|---|---|---|---|---|
+| 10–100 | all | **100%** | 2–4s | — |
+| 200 | 200/200 | **100%** | 3.9s | — |
+| 300 | 300/300 | **100%** | 4.6s | — |
+| **400** | **229/400** | **57%** | 13.5s | `McpError: Timeout` (server saturation) |
+
+**~300 concurrent at 100% (warm); cliff at ~400.** The failure mode is the **MCP
+request timing out** — the endpoint *accepts* the sessions but can't service every
+call within the protocol timeout under load — **not** connection rejection / 429. 
+
+**The ceiling is elastic, not fixed.** An earlier cold-start burst capped at ~120–150
+(same timeout failure) before the endpoint scaled; once warm it held 300. So the MCP
+ceiling tracks the endpoint's **replica count / autoscaling**, not a hard limit — it
+would rise directly with more replicas.
+
+### Head-to-head
+
+| | **MCP endpoint** | **hf-sandbox (HF Jobs)** |
+|---|---|---|
+| 100%-reliable concurrency | ~300 (warm) · ~120–150 (cold burst) | ~200 |
+| Cliff onset | ~400 | ~300–500 |
+| Per-sandbox boot | **~0.9s** | ~16s |
+| Failure mode at cliff | MCP request **timeout** (server saturates) | boot **timeout** (scheduler waves) |
+| Scaling bound | endpoint replica count (autoscale) | HF Jobs cluster capacity |
+| Cost model | endpoint uptime (instance·hr) | per-sandbox-second |
+
+Neither hit a hard quota — both cap on **throughput**, not policy. The MCP endpoint
+(warm) actually sustains *more* concurrent sessions than HF Jobs **and** boots ~17×
+faster, but it's a single autoscaling service (execution-only), whereas HF Jobs
+spreads each sandbox across the cluster at a 16s boot cost. **For ≤300 fast-boot
+exec sandboxes the MCP endpoint wins; for wider fan-out or full-sandbox semantics
+(shell, files), HF Jobs is the path — and 1000–2000 concurrent needs either endpoint
+replica scaling or a longer Jobs health-wait, neither reachable out-of-the-box today.**
+
+---
+
 ## Setup
 
 | | |

@@ -15,7 +15,8 @@ Side-by-side scalability benchmark of code-execution sandboxes (CPU-only):
 - Warm exec on hf-sandbox is now ~2.3× faster than E2B (8.4 vs 3.6 ops/s); 10 MB writes ~2.9× faster.
 - E2B still wins cold boot (~0.6s vs ~16s) and large reads (~34 vs ~4 MB/s).
 - MCP boots in ~0.9s (E2B-class) and holds 50 concurrent in ~3s, but is execution-only (no shell, no file transfer).
-- HF Jobs max-provision (B07): 100% up to ~200 concurrent sandboxes; ~63% at 500 (boot-timeout, not quota).
+- Max concurrency (held simultaneously): HF Jobs ~200 at 100% (B07, cliff at 500, boot-timeout);
+  MCP endpoint ~300 at 100% when warm (B08, cliff at 400, request-timeout). Both cap on throughput, not quota.
 
 ## Layout
 
@@ -66,6 +67,7 @@ python benchmarks/b04_concurrent_create.py --provider hf --n 50
 python benchmarks/b05_concurrent_exec.py  --provider hf --n 10
 python benchmarks/b06_long_running.py     --provider hf --minutes 5
 python benchmarks/b07_max_provision.py    --provider hf --rungs 25,50,100,200,500,1000
+python benchmarks/b08_mcp_concurrency.py   --rungs 10,25,50,100,200,400   # MCP endpoint only
 
 # Full batteries:
 bash scripts/run_hf_pr7.sh

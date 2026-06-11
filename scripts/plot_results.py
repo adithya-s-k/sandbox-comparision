@@ -100,8 +100,36 @@ def plot_b03():
     plt.savefig(CH / 'b03_io.png', dpi=130)
     plt.close()
     print(f"  wrote {CH / 'b03_io.png'}")
+
+def plot_concurrency():
+    series = [('hf', 'b07_max_provision', 'hf-sandbox (HF Jobs)'), ('mcp', 'b08_mcp_concurrency', 'MCP endpoint')]
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    plotted = False
+    for prov, bench, label in series:
+        rows = [json.loads(l)['summary'] for l in (RAW / f'{bench}__{prov}.jsonl').open()] if (RAW / f'{bench}__{prov}.jsonl').exists() else []
+        if not rows:
+            continue
+        by_n = {r['n']: r['success_rate'] * 100 for r in rows}
+        ns = sorted(by_n)
+        ax.plot(ns, [by_n[n] for n in ns], marker='o', linewidth=2.5, label=label, color=COLOR[prov])
+        plotted = True
+    if not plotted:
+        plt.close()
+        return
+    ax.axhline(90, ls='--', color='#888', alpha=0.6, label='90% threshold')
+    ax.set_xlabel('concurrent sandboxes / sessions held open (N)')
+    ax.set_ylabel('success rate (%)')
+    ax.set_ylim(0, 105)
+    ax.set_title('Max concurrency — success rate vs N')
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    plt.tight_layout()
+    plt.savefig(CH / 'concurrency.png', dpi=130)
+    plt.close()
+    print(f"  wrote {CH / 'concurrency.png'}")
 if __name__ == '__main__':
     plot_b01()
     plot_b04()
     plot_b03()
+    plot_concurrency()
     print('\nAll charts in', CH)
