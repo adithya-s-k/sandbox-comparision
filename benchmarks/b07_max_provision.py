@@ -44,7 +44,7 @@ def _teardown(records: list) -> None:
 _LIVE = ('RUNNING', 'UPDATING', 'PENDING', 'QUEUED', 'STARTING')
 
 def _sweep_orphans(provider: str, max_passes: int=15) -> int:
-    if provider != 'hf':
+    if provider not in ('hf', 'hf-rust'):
         return 0
     try:
         from huggingface_hub import list_jobs, cancel_job
@@ -113,7 +113,7 @@ def run_rung(provider: str, n: int) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument('--provider', required=True, choices=['e2b', 'hf', 'mcp'])
+    ap.add_argument('--provider', required=True, choices=['e2b', 'hf', 'hf-rust', 'mcp'])
     ap.add_argument('--rungs', default='25,50,100,200,500', help='comma-separated N values to ramp through')
     ap.add_argument('--stop-below', type=float, default=0.9, help="stop ramping once a rung's success rate falls below this")
     args = ap.parse_args()

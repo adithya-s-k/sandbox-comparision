@@ -9,8 +9,8 @@ ROOT = Path(__file__).resolve().parents[1]
 RAW = ROOT / 'results' / 'raw'
 CH = ROOT / 'results' / 'charts'
 CH.mkdir(parents=True, exist_ok=True)
-COLOR = {'e2b': '#59a6ff', 'hf': '#ffa05c', 'mcp': '#7ddc6b'}
-PROVIDERS = ['e2b', 'hf', 'mcp']
+COLOR = {'e2b': '#59a6ff', 'hf': '#ffa05c', 'hf-rust': '#e05c5c', 'mcp': '#7ddc6b'}
+PROVIDERS = ['e2b', 'hf', 'hf-rust', 'mcp']
 
 def load(bench, provider):
     p = RAW / f'{bench}__{provider}.jsonl'
@@ -19,7 +19,7 @@ def load(bench, provider):
 def plot_b01():
     fig, ax = plt.subplots(figsize=(8, 4))
     metrics = ['p50', 'p90', 'p99']
-    width = 0.27
+    width = 0.8 / len(PROVIDERS)
     x = list(range(len(metrics)))
     for i, prov in enumerate(PROVIDERS):
         rows = [r for r in load('b01_boot_latency', prov) if r.get('ok')]
@@ -31,7 +31,7 @@ def plot_b01():
                 continue
             k = int(round({'p50': 0.5, 'p90': 0.9, 'p99': 0.99}[m] * (len(tot) - 1)))
             vals.append(tot[k])
-        offset = (i - 1) * width
+        offset = (i - (len(PROVIDERS) - 1) / 2) * width
         bars = ax.bar([xi + offset for xi in x], vals, width, label=prov, color=COLOR[prov])
         for b, v in zip(bars, vals):
             ax.text(b.get_x() + b.get_width() / 2, v, f'{v:.0f}ms', ha='center', va='bottom', fontsize=9)
@@ -102,7 +102,7 @@ def plot_b03():
     print(f"  wrote {CH / 'b03_io.png'}")
 
 def plot_concurrency():
-    series = [('hf', 'b07_max_provision', 'hf-sandbox (HF Jobs)'), ('mcp', 'b08_mcp_concurrency', 'MCP endpoint')]
+    series = [('hf', 'b07_max_provision', 'hf-sandbox (HF Jobs)'), ('hf-rust', 'b07_max_provision', 'hf Sandbox API (HF Jobs)'), ('mcp', 'b08_mcp_concurrency', 'MCP endpoint')]
     fig, ax = plt.subplots(figsize=(8, 4.5))
     plotted = False
     for prov, bench, label in series:
