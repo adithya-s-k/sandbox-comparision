@@ -4,6 +4,7 @@ Side-by-side scalability benchmark of code-execution sandboxes (CPU-only):
 
 - **E2B** — `e2b` Python SDK
 - **hf-sandbox** — Modal-style sandbox on HF Jobs ([PR #7](https://github.com/huggingface/hf-sandbox/pull/7) HF Jobs proxy path)
+- **hf-rust** — `Sandbox` API built into `huggingface_hub` ([PR #4350](https://github.com/huggingface/huggingface_hub/pull/4350), Rust `sbx-server` on HF Jobs)
 - **MCP** — a remote-code-execution MCP server over Streamable HTTP
 
 📋 **[REPORT.md](REPORT.md)** — full writeup with charts, tables, and recommendation.
@@ -24,7 +25,7 @@ Side-by-side scalability benchmark of code-execution sandboxes (CPU-only):
 .
 ├── REPORT.md            # the writeup
 ├── report.html          # self-contained HTML version
-├── adapters/            # uniform 5-method API per provider (e2b / hf / mcp)
+├── adapters/            # uniform 5-method API per provider (e2b / hf / hf-rust / mcp)
 ├── benchmarks/          # b01..b07 micro-benchmarks
 ├── scripts/             # verify_setup, plot_results, build_html_report, run_*.sh
 └── results/
@@ -51,6 +52,14 @@ Dependency notes:
   uv pip install --no-deps "git+https://github.com/huggingface/hf-sandbox.git@chore/drop-cloudflared"
   ```
 
+- **hf-rust** benchmarks the `Sandbox` API from
+  [huggingface_hub PR #4350](https://github.com/huggingface/huggingface_hub/pull/4350),
+  not yet released. Until it merges, install `huggingface_hub` from the branch:
+
+  ```bash
+  uv pip install "git+https://github.com/huggingface/huggingface_hub.git@sandbox-api"
+  ```
+
 - **MCP**: set `MCP_ENDPOINT` in `.env` to a Streamable-HTTP MCP server exposing a
   `remote_code_execution(code, runtime)` tool (`runtime` ∈ {python, node}).
 
@@ -59,7 +68,7 @@ Dependency notes:
 ```bash
 python scripts/verify_setup.py            # smoke test each configured provider
 
-# Individual benchmarks (provider ∈ e2b | hf | mcp):
+# Individual benchmarks (provider ∈ e2b | hf | hf-rust | mcp):
 python benchmarks/b01_boot_latency.py     --provider e2b --n 5
 python benchmarks/b02_exec_throughput.py  --provider hf
 python benchmarks/b03_io_throughput.py    --provider mcp
@@ -71,6 +80,7 @@ python benchmarks/b08_mcp_concurrency.py   --rungs 10,25,50,100,200,400   # MCP 
 
 # Full batteries:
 bash scripts/run_hf_pr7.sh
+bash scripts/run_hf_rust.sh
 bash scripts/run_mcp.sh
 
 # Charts + HTML report:

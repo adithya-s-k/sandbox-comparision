@@ -8,7 +8,7 @@ BENCH = 'b06_long_running'
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument('--provider', required=True, choices=['e2b', 'hf', 'mcp'])
+    ap.add_argument('--provider', required=True, choices=['e2b', 'hf', 'hf-rust', 'mcp'])
     ap.add_argument('--minutes', type=float, default=5.0)
     ap.add_argument('--interval', type=float, default=20.0, help='seconds between pings')
     args = ap.parse_args()

@@ -8,7 +8,7 @@ SIZES = [('1KB', 1024), ('64KB', 64 * 1024), ('1MB', 1024 * 1024), ('10MB', 10 *
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument('--provider', required=True, choices=['e2b', 'hf', 'mcp'])
+    ap.add_argument('--provider', required=True, choices=['e2b', 'hf', 'hf-rust', 'mcp'])
     ap.add_argument('--repeats', type=int, default=3)
     args = ap.parse_args()
     if not env_check(args.provider):

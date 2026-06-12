@@ -24,7 +24,7 @@ def one_lifecycle(provider: str, idx: int, out: list) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument('--provider', required=True, choices=['e2b', 'hf', 'mcp'])
+    ap.add_argument('--provider', required=True, choices=['e2b', 'hf', 'hf-rust', 'mcp'])
     ap.add_argument('--n', type=int, default=10)
     args = ap.parse_args()
     if not env_check(args.provider):
