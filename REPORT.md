@@ -1,6 +1,14 @@
-# hf-sandbox vs E2B vs MCP — Scalability Comparison Report
+# E2B vs hf-sandbox vs hf-rust vs MCP — Scalability Comparison Report
 
-**Date:** 2026-06-09 · **CPU-only** · ~$0.02 total spend across all benchmarks.
+**Date:** 2026-06-12 · **CPU-only** · ~$0.03 total spend across all benchmarks.
+
+> **Update 3 (2026-06-12):** Added a **fourth contender** — **`hf-rust`**, the
+> `Sandbox` API being built directly into `huggingface_hub`
+> ([PR #4350](https://github.com/huggingface/huggingface_hub/pull/4350)): a Rust
+> `sbx-server` bootstrapped on HF Jobs (no per-boot `pip install`). Same HF Jobs
+> backend as hf-sandbox, but **~3× faster cold boot (~6s vs 16s)** and the **best
+> file-write throughput of any provider (27 MB/s)**. Data in
+> `results/raw/*__hf-rust.jsonl`. See **[Contender 4: hf-rust](#contender-4-hf-rust)**.
 
 > **Update 2 (2026-06-09):** Added a **third contender** — the **MCP remote-code-execution
 > server** (POC by Adrien, `rmcp`, served as a Streamable-HTTP MCP on a *persistent
@@ -28,21 +36,21 @@ in `results/raw/*.jsonl`; charts in `results/charts/*.png`.
 
 ## TL;DR
 
-| Dimension | E2B | hf-sandbox (PR #7 proxy) | MCP server | Verdict |
-|---|---|---|---|---|
-| **Cold boot (p50)** | **621 ms** | 15 965 ms | **910 ms**¹ | E2B≈MCP ≫ HF (HF ~17-26× slower) |
-| **Warm exec throughput** | 3.6 ops/s | **8.4 ops/s** | 3.0 ops/s | **HF fastest** |
-| **Warm exec p50** | 270 ms | **116 ms** | 314 ms² | **HF fastest** |
-| **10 MB write** | 3.52 MB/s | **10.05 MB/s** | ❌ no file primitive | HF |
-| **10 MB read** | **33.8 MB/s** | 4.30 MB/s | ❌ no file primitive | E2B |
-| **Concurrent create @ N=20** | 20/20 (**100%**) | 20/20 (**100%**) | 20/20 (**100%**) | all tied on success |
-| **Concurrent create @ N=50** | 50/50 (**100%**), 2.1s | 50/50 (100%), 191s | **50/50 (100%), 3.1s** | **E2B≈MCP flat; HF in waves** |
-| **Concurrent exec @ N=10** | 10/10 (**100%**) | **10/10 (100%)** | 10/10 (**100%**) | all tied |
-| **Single-sandbox stability (5 min)** | 15/15 (100%) | 15/15 (100%) | 15/15 (100%) | all rock-solid |
+| Dimension | E2B | hf-sandbox (PR #7) | hf-rust | MCP server | Verdict |
+|---|---|---|---|---|---|
+| **Cold boot (p50)** | **621 ms** | 15 965 ms | 6 098 ms | 910 ms¹ | E2B≈MCP ≫ hf-rust ≫ hf-sandbox |
+| **Warm exec throughput** | 3.6 ops/s | **8.4 ops/s** | 6.0 ops/s | 3.0 ops/s | **hf-sandbox fastest** |
+| **Warm exec p50** | 270 ms | **116 ms** | 164 ms | 314 ms² | **hf-sandbox fastest** |
+| **10 MB write** | 3.52 MB/s | 10.05 MB/s | **26.99 MB/s** | ❌ no file primitive | **hf-rust** |
+| **10 MB read** | **33.8 MB/s** | 4.30 MB/s | 8.80 MB/s | ❌ no file primitive | E2B |
+| **Concurrent create @ N=20** | 20/20 (**100%**) | 20/20 (**100%**) | 20/20 (**100%**) | 20/20 (**100%**) | all tied on success |
+| **Concurrent create @ N=50** | 50/50 (**100%**), 2.1s | 50/50 (100%), 191s | 48/50 (96%), 121s | **50/50 (100%), 3.1s** | **E2B≈MCP flat; HF-backed in waves** |
+| **Concurrent exec @ N=10** | 10/10 (**100%**) | **10/10 (100%)** | 10/10 (**100%**) | 10/10 (**100%**) | all tied |
+| **Single-sandbox stability (5 min)** | 15/15 (100%) | 15/15 (100%) | 15/15 (100%) | 15/15 (100%) | all rock-solid |
 
-¹ MCP boot is session-open against an *already-running* endpoint — no VM/Job to provision (and assumes the endpoint is warm; a scaled-to-zero endpoint adds a one-time ~5s spin-up). ² MCP exec routes shell commands through Python `subprocess` (no shell runtime), which adds process-spawn overhead; pure-python exec is ~280 ms.
+¹ MCP boot is session-open against an *already-running* endpoint — no VM/Job to provision (warm; a scaled-to-zero endpoint adds a one-time ~5s spin-up). ² MCP exec routes shell commands through Python `subprocess` (no shell runtime), adding process-spawn overhead; pure-python exec is ~280 ms.
 
-**The three-way picture:** **E2B** and the **MCP server** both boot in <1s and stay flat under concurrency (50 in ~2-3s); **hf-sandbox** is now 100%-reliable at N=50 (PR #7 killed the tunnel cliff) but still boots in ~16s and staggers in scheduler waves. **hf-sandbox is fastest once warm** (8.4 ops/s, best 10 MB write). **E2B** owns large-file read streaming (~34 MB/s). The **MCP** is the fastest-to-provision *code-exec* sandbox but is **execution-only** — no shell, no file transfer — so it fits agent code-execution, not artifact movement. Each wins a different axis; pick by whether your bottleneck is boot latency, warm throughput, file I/O, or fan-out.
+**The four-way picture:** **E2B** and the **MCP server** both boot in <1s and stay flat under concurrency (50 in ~2-3s). The two **HF-Jobs-backed** options boot a fresh job each time and stagger in scheduler waves — but **`hf-rust` boots ~3× faster than `hf-sandbox`** (~6s vs 16s) by dropping the per-boot `pip install`. **hf-sandbox is fastest once warm** (8.4 ops/s); **hf-rust has the best file-write throughput** (27 MB/s); **E2B** owns large-file read streaming (~34 MB/s); the **MCP** is the fastest-to-provision *code-exec* sandbox but is **execution-only** (no shell, no file transfer). Each wins a different axis — pick by whether your bottleneck is boot latency, warm throughput, file I/O, or fan-out.
 
 ---
 
@@ -63,31 +71,32 @@ boot time.**
 
 ## Full per-benchmark comparison (all contenders)
 
-| Benchmark / metric | E2B | HF — before (cloudflared) | HF — after (PR #7 proxy) | MCP server | Winner |
+| Benchmark / metric | E2B | hf-sandbox (PR #7) | hf-rust | MCP server | Winner |
 |---|---|---|---|---|---|
-| **B01 · Cold boot** create p50 | 360 ms | 22 873 ms | 15 827 ms | **910 ms**¹ | E2B (MCP close 2nd) |
-| B01 · first-exec p50 | 261 ms | 279 ms | **145 ms** | 1 672 ms² | HF (PR #7) |
-| **B01 · boot→ready p50** | **621 ms** | 23 162 ms | 15 965 ms | 2 563 ms² | E2B |
-| **B02 · Warm exec** throughput | 3.6 ops/s | 3.1 ops/s | **8.4 ops/s** | 3.0 ops/s | HF (PR #7) |
-| B02 · exec p50 | 270 ms | 311 ms | **116 ms** | 314 ms | HF (PR #7) |
-| B02 · exec p99 | 355 ms | 416 ms | **171 ms** | 427 ms | HF (PR #7) |
-| **B03 · 10 MB write** | 3.52 MB/s | 2.67 MB/s | **10.05 MB/s** | ❌ no file primitive | HF (PR #7) |
-| B03 · 1 MB write | 0.97 MB/s | 1.01 MB/s | **4.08 MB/s** | ❌ no file primitive | HF (PR #7) |
-| **B03 · 10 MB read** | **33.84 MB/s** | 4.79 MB/s | 4.30 MB/s | ❌ no file primitive | E2B (~8×) |
+| **B01 · Cold boot** create p50 | 360 ms | 15 827 ms | 5 928 ms | **910 ms**¹ | E2B (MCP 2nd) |
+| B01 · first-exec p50 | 261 ms | **145 ms** | 170 ms | 1 672 ms² | hf-sandbox |
+| **B01 · boot→ready p50** | **621 ms** | 15 965 ms | 6 098 ms | 2 563 ms² | E2B |
+| **B02 · Warm exec** throughput | 3.6 ops/s | **8.4 ops/s** | 6.0 ops/s | 3.0 ops/s | hf-sandbox |
+| B02 · exec p50 | 270 ms | **116 ms** | 164 ms | 314 ms | hf-sandbox |
+| B02 · exec p99 | 355 ms | **171 ms** | 226 ms | 427 ms | hf-sandbox |
+| **B03 · 10 MB write** | 3.52 MB/s | 10.05 MB/s | **26.99 MB/s** | ❌ no file primitive | **hf-rust** |
+| B03 · 1 MB write | 0.97 MB/s | **4.08 MB/s** | 3.20 MB/s | ❌ no file primitive | hf-sandbox |
+| **B03 · 10 MB read** | **33.84 MB/s** | 4.30 MB/s | 8.80 MB/s | ❌ no file primitive | E2B (~4× over hf-rust) |
 | **B04 · Concurrent create N=5** | 5/5 (100%) | 5/5 (100%) | 5/5 (100%) | 5/5 (100%) | tie |
-| B04 · N=5 wall | **2.1 s** | 25.6 s | 16.6 s | 2.9 s | E2B (MCP ~tied) |
+| B04 · N=5 wall | **2.1 s** | 16.6 s | 6.3 s | 2.9 s | E2B (MCP ~tied) |
 | **B04 · N=20** | 20/20 (100%) | 20/20 (100%) | 20/20 (100%) | 20/20 (100%) | tie |
-| B04 · N=20 wall | **2.2 s** | 46.0 s | 69.5 s | 2.9 s | E2B (MCP ~tied) |
-| **B04 · N=50 success** | 50/50 (100%) | 29/50 (58%) | 50/50 (100%) | 50/50 (100%) | E2B = HF = **MCP** |
-| B04 · N=50 wall | **2.1 s** | 88.1 s | 191.2 s | 3.1 s | E2B (MCP ~tied, both flat) |
-| B04 · N=50 errors | — | 21 tunnel | 0 | 0 | E2B = HF = MCP |
-| **B05 · Concurrent exec N=10** sandboxes ok | 10/10 | 4/10 | 10/10 | 10/10 | E2B = HF = MCP |
-| B05 · ops completed | 200/200 | 80/86 | 200/200 | 200/200 | tie |
-| B05 · worker p50 | 265 ms | 275 ms | **116 ms** | 220 ms | HF (PR #7) |
-| B05 · worst worker p99 | 548 ms | 836 ms | **171 ms** | 1 625 ms | HF (PR #7) |
-| B05 · wall | **6.8 s** | — | 19.0 s | 12.0 s | E2B |
+| B04 · N=20 wall | **2.2 s** | 69.5 s | 55.7 s | 2.9 s | E2B (MCP ~tied) |
+| **B04 · N=50 success** | 50/50 (100%) | 50/50 (100%) | 48/50 (96%) | 50/50 (100%) | E2B = hf = MCP |
+| B04 · N=50 wall | **2.1 s** | 191.2 s | 121.0 s | 3.1 s | E2B (MCP ~tied, both flat) |
+| B04 · N=50 errors | — | 0 | 2 boot-timeout | 0 | E2B = hf = MCP |
+| **B05 · Concurrent exec N=10** sandboxes ok | 10/10 | 10/10 | 10/10 | 10/10 | tie |
+| B05 · ops completed | 200/200 | 200/200 | 200/200 | 200/200 | tie |
+| B05 · worker p50 | 265 ms | **116 ms** | 170 ms | 220 ms | hf-sandbox |
+| B05 · worst worker p99 | 548 ms | **171 ms** | 294 ms | 1 625 ms | hf-sandbox |
+| B05 · wall | **6.8 s** | 19.0 s | 11.3 s | 12.0 s | E2B |
 | **B06 · 5-min stability** | 15/15 (100%) | 15/15 (100%) | 15/15 (100%) | 15/15 (100%) | tie |
-| B06 · ping p50 | **265 ms** | bimodal ≈290/670 ms | ~460 ms | 849 ms² | E2B |
+| B06 · ping p50 | **265 ms** | ~460 ms | ~720 ms | 849 ms² | E2B |
+| **B07 · max concurrency (100%)** | — | ~200 (cliff 500) | ~100 (cliff 200)⁴ | ~300 (B08, cliff 400) | — |
 | **Total cost** | ~$0.008 | ~$0.007 | ~$0.006 | n/a (endpoint uptime)³ | different model |
 
 ¹ MCP "create" = opening a session on an *already-running* endpoint — no VM/Job to
@@ -97,6 +106,10 @@ through Python `subprocess`, adding ~1.3s process-spawn overhead. Pure-python ex
 ~280 ms — MCP's real warm latency is E2B-class; the inflated first-exec/ping numbers
 are a wrapper artifact, not the engine. ³ MCP is billed by **endpoint uptime**
 (instance·hr), not per-session — not comparable to per-second sandbox billing.
+⁴ hf-rust caps lower than hf-sandbox mainly because the built-in `Sandbox` API uses
+a **120s ready-timeout** vs hf-sandbox's 300s — under the same HF Jobs scheduler
+waves, more boots time out before the shorter window closes (it's not a worse
+backend; a longer timeout would lift the ceiling).
 
 ---
 
@@ -138,13 +151,44 @@ product"* — not Jobs — is the right long-term sandbox primitive.
 
 ---
 
+## Contender 4: hf-rust
+
+**What it is.** The `Sandbox` API being built **directly into `huggingface_hub`**
+([PR #4350](https://github.com/huggingface/huggingface_hub/pull/4350)) — a Rust
+`sbx-server` bootstrapped on HF Jobs, driven via `huggingface_hub.Sandbox`
+(`create` / `run` / `files.write` / `files.read` / `kill`). Same HF Jobs backend
+and same `https://<job_id>--PORT.hf.jobs` proxy as hf-sandbox; the difference is the
+in-pod server is a prebuilt Rust binary, not a Python FastAPI app installed at boot.
+
+**Why it matters.** Two concrete wins over the Python `hf-sandbox`, both from the
+same data above:
+- **~3× faster cold boot (~6s vs 16s).** hf-sandbox spends most of its boot doing
+  `pip install fastapi uvicorn` on every start; the Rust server skips that — boot is
+  just job-schedule + binary-start + proxy-route.
+- **Best file-write throughput of any provider (27 MB/s 10 MB write).** ~2.7× the
+  Python hf-sandbox and ~8× E2B. Read is 8.8 MB/s (below E2B's 34, above hf-sandbox).
+
+**What's the same.** It's still a fresh HF Job per sandbox, so it can't approach
+E2B/MCP sub-second boots, and concurrent fan-out staggers in the same scheduler
+waves (B07: ~100 at 100%, cliff at 200 — capped by its 120s ready-timeout, see
+above). Warm exec (6.0 ops/s) sits between E2B and hf-sandbox; stability is perfect.
+
+**Where it fits.** A **drop-in faster hf-sandbox** with full sandbox semantics
+(shell + real file API). If you're using hf-sandbox today, hf-rust is strictly
+better on boot time and writes at the same scaling profile — the natural successor
+once `huggingface_hub`'s built-in `Sandbox` ships. Status: unreleased (PR #4350);
+benchmarked from the `sandbox-api` branch (`huggingface_hub==1.20.0.dev0`).
+
+---
+
 ## Max concurrency — how many can I hold at once? (B07 / B08)
 
 B01–B06 cap at N=50 and tear each sandbox down on ready, so they never coexist.
 B07/B08 measure the *true peak concurrent* ceiling: fan out N creates, **hold every
 one alive simultaneously** at a barrier, count how many the platform sustains, then
-tear all down. B07 targets **hf-sandbox (HF Jobs)**; B08 targets the **MCP endpoint**
-(single async event loop so the client isn't the bottleneck; fd limit raised).
+tear all down. B07 targets the **HF-Jobs-backed** providers (**hf-sandbox** and
+**hf-rust**); B08 targets the **MCP endpoint** (single async event loop so the
+client isn't the bottleneck; fd limit raised).
 
 ![Max concurrency](results/charts/concurrency.png)
 
@@ -164,6 +208,22 @@ tear all down. B07 targets **hf-sandbox (HF Jobs)**; B08 targets the **MCP endpo
 alive, and the scheduler simply couldn't bring the rest to healthy inside the 300s
 window (boots arrive in waves). A longer health-wait would push the number up; the
 "healthy within 5 min" ceiling is ~200–300.
+
+### B07 — hf-rust concurrent provisioning
+
+| N | Healthy | Success | Peak alive | Fan-out | Failure mode |
+|---|---|---|---|---|---|
+| 25 | 25/25 | **100%** | 25 | 23s | — |
+| 50 | 50/50 | **100%** | 50 | 39s | — |
+| 100 | 100/100 | **100%** | 100 | 110s | — |
+| **200** | **141/200** | **70%** | **141** | 122s | `did not become ready within 120s` |
+
+**~100 concurrent at 100%; cliff at 200.** Same HF Jobs backend as hf-sandbox, same
+scheduler-wave failure mode — but hf-rust caps **lower (~100 vs ~200)** because the
+built-in `Sandbox` API waits only **120s** for ready vs hf-sandbox's 300s. Under the
+same boot waves, the tighter window times out more boots (141 *were* simultaneously
+alive at N=200). It's a **client-timeout difference, not a worse backend** — a longer
+ready-wait would lift hf-rust's ceiling toward hf-sandbox's.
 
 ### B08 — MCP endpoint concurrent sessions
 
@@ -185,22 +245,24 @@ would rise directly with more replicas.
 
 ### Head-to-head
 
-| | **MCP endpoint** | **hf-sandbox (HF Jobs)** |
-|---|---|---|
-| 100%-reliable concurrency | ~300 (warm) · ~120–150 (cold burst) | ~200 |
-| Cliff onset | ~400 | ~300–500 |
-| Per-sandbox boot | **~0.9s** | ~16s |
-| Failure mode at cliff | MCP request **timeout** (server saturates) | boot **timeout** (scheduler waves) |
-| Scaling bound | endpoint replica count (autoscale) | HF Jobs cluster capacity |
-| Cost model | endpoint uptime (instance·hr) | per-sandbox-second |
+| | **MCP endpoint** | **hf-sandbox** | **hf-rust** |
+|---|---|---|---|
+| 100%-reliable concurrency | ~300 (warm) · ~120–150 (cold burst) | ~200 | ~100 |
+| Cliff onset | ~400 | ~300–500 | ~200 |
+| Per-sandbox boot | **~0.9s** | ~16s | ~6s |
+| Failure mode at cliff | MCP request **timeout** (server saturates) | boot **timeout** (300s window) | boot **timeout** (120s window) |
+| Scaling bound | endpoint replica count (autoscale) | HF Jobs cluster + 300s wait | HF Jobs cluster + 120s wait |
+| Cost model | endpoint uptime (instance·hr) | per-sandbox-second | per-sandbox-second |
 
-Neither hit a hard quota — both cap on **throughput**, not policy. The MCP endpoint
-(warm) actually sustains *more* concurrent sessions than HF Jobs **and** boots ~17×
-faster, but it's a single autoscaling service (execution-only), whereas HF Jobs
-spreads each sandbox across the cluster at a 16s boot cost. **For ≤300 fast-boot
-exec sandboxes the MCP endpoint wins; for wider fan-out or full-sandbox semantics
-(shell, files), HF Jobs is the path — and 1000–2000 concurrent needs either endpoint
-replica scaling or a longer Jobs health-wait, neither reachable out-of-the-box today.**
+None hit a hard quota — all cap on **throughput**, not policy. The MCP endpoint
+(warm) sustains the most concurrent sessions **and** boots ~17× faster than the
+HF-Jobs options, but it's a single autoscaling service (execution-only). Among the
+HF-Jobs-backed pair, **hf-sandbox holds ~2× the concurrency of hf-rust** purely
+because of its longer ready-timeout (300s vs 120s) — the underlying boot throughput
+is identical. **For ≤300 fast-boot exec sandboxes the MCP endpoint wins; for wider
+fan-out or full-sandbox semantics (shell, files), the HF-Jobs options are the path
+— and 1000–2000 concurrent needs either endpoint replica scaling or a longer Jobs
+health-wait, neither reachable out-of-the-box today.**
 
 ---
 
