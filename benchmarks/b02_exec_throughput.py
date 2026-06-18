@@ -8,7 +8,7 @@ BENCH = 'b02_exec_throughput'
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument('--provider', required=True, choices=['e2b', 'hf', 'hf-rust', 'mcp'])
+    ap.add_argument('--provider', required=True, choices=['e2b', 'hf', 'hf-rust', 'hf-pool', 'mcp'])
     ap.add_argument('--ops', type=int, default=100)
     args = ap.parse_args()
     if not env_check(args.provider):

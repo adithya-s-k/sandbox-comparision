@@ -33,7 +33,7 @@ def env_check(provider: str) -> bool:
     if provider == 'e2b' and (not os.getenv('E2B_API_KEY')):
         print(f'[skip] E2B_API_KEY missing')
         return False
-    if provider in ('hf', 'hf-rust') and (not os.getenv('HF_TOKEN')):
+    if provider in ('hf', 'hf-rust', 'hf-pool') and (not os.getenv('HF_TOKEN')):
         print(f'[skip] HF_TOKEN missing')
         return False
     return True

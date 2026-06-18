@@ -13,7 +13,7 @@ def check_one(name: str) -> bool:
     if name == 'e2b' and (not os.getenv('E2B_API_KEY')):
         print(f'  [skip] E2B_API_KEY not set')
         return False
-    if name in ('hf', 'hf-rust') and (not os.getenv('HF_TOKEN')):
+    if name in ('hf', 'hf-rust', 'hf-pool') and (not os.getenv('HF_TOKEN')):
         print(f'  [skip] HF_TOKEN not set')
         return False
     a = ADAPTERS[name]()

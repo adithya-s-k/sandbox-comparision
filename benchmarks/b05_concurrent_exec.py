@@ -27,7 +27,7 @@ def worker(provider: str, idx: int, ops: int, out: list) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument('--provider', required=True, choices=['e2b', 'hf', 'hf-rust', 'mcp'])
+    ap.add_argument('--provider', required=True, choices=['e2b', 'hf', 'hf-rust', 'hf-pool', 'mcp'])
     ap.add_argument('--n', type=int, default=10, help='parallel sandboxes')
     ap.add_argument('--ops', type=int, default=20, help='sequential exec ops per sandbox')
     args = ap.parse_args()

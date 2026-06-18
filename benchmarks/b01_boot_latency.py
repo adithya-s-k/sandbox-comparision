@@ -25,7 +25,7 @@ def run_once(provider: str, run_id: int) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument('--provider', required=True, choices=['e2b', 'hf', 'hf-rust', 'mcp'])
+    ap.add_argument('--provider', required=True, choices=['e2b', 'hf', 'hf-rust', 'hf-pool', 'mcp'])
     ap.add_argument('--n', type=int, default=5)
     args = ap.parse_args()
     if not env_check(args.provider):

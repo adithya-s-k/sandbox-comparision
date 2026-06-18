@@ -9,8 +9,8 @@ ROOT = Path(__file__).resolve().parents[1]
 RAW = ROOT / 'results' / 'raw'
 CH = ROOT / 'results' / 'charts'
 CH.mkdir(parents=True, exist_ok=True)
-COLOR = {'e2b': '#59a6ff', 'hf': '#ffa05c', 'hf-rust': '#e05c5c', 'mcp': '#7ddc6b'}
-PROVIDERS = ['e2b', 'hf', 'hf-rust', 'mcp']
+COLOR = {'e2b': '#59a6ff', 'hf': '#ffa05c', 'hf-rust': '#e05c5c', 'hf-pool': '#b15cff', 'mcp': '#7ddc6b'}
+PROVIDERS = ['e2b', 'hf', 'hf-rust', 'hf-pool', 'mcp']
 
 def load(bench, provider):
     p = RAW / f'{bench}__{provider}.jsonl'
@@ -102,7 +102,9 @@ def plot_b03():
     print(f"  wrote {CH / 'b03_io.png'}")
 
 def plot_concurrency():
-    series = [('hf', 'b07_max_provision', 'hf-sandbox (HF Jobs)'), ('hf-rust', 'b07_max_provision', 'hf Sandbox API (HF Jobs)'), ('mcp', 'b08_mcp_concurrency', 'MCP endpoint')]
+    # hf-pool intentionally omitted: its B07 ramp ≥50 is poisoned by the backend
+    # self-pause (not a real ceiling) — re-add once the endpoint is restarted.
+    series = [('hf', 'b07_max_provision', 'hf-sandbox (HF Jobs)'), ('hf-rust', 'b07_max_provision', 'hf Sandbox API — dedicated VM'), ('mcp', 'b08_mcp_concurrency', 'MCP endpoint')]
     fig, ax = plt.subplots(figsize=(8, 4.5))
     plotted = False
     for prov, bench, label in series:
@@ -127,9 +129,83 @@ def plot_concurrency():
     plt.savefig(CH / 'concurrency.png', dpi=130)
     plt.close()
     print(f"  wrote {CH / 'concurrency.png'}")
+def plot_b09_amortized():
+    """B09 — first (cold host) vs warm create+ready, per density."""
+    data = [json.loads(l)['summary'] for l in (RAW / 'b09_amortized_boot__hf-pool.jsonl').open()] if (RAW / 'b09_amortized_boot__hf-pool.jsonl').exists() else []
+    if not data:
+        return
+    by_d = {r['density']: r for r in data}
+    dens = sorted(by_d)
+    first = [by_d[d]['first_ready_ms'] for d in dens]
+    warm = [by_d[d]['warm_ready_ms'].get('p50', 0) for d in dens]
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    x = list(range(len(dens)))
+    w = 0.38
+    b1 = ax.bar([xi - w / 2 for xi in x], first, w, label='first sandbox (host cold start)', color='#e05c5c')
+    b2 = ax.bar([xi + w / 2 for xi in x], warm, w, label='warm sandbox (p50)', color='#b15cff')
+    for bars in (b1, b2):
+        for b in bars:
+            ax.text(b.get_x() + b.get_width() / 2, b.get_height(), f'{b.get_height():.0f}', ha='center', va='bottom', fontsize=8)
+    ax.set_xticks(x)
+    ax.set_xticklabels([f'{d}/host' for d in dens])
+    ax.set_xlabel('sandboxes_per_host')
+    ax.set_ylabel('create + first exec (ms)')
+    ax.set_yscale('log')
+    ax.set_title('B09 — Amortized boot: first vs warm sandbox (pool mode)')
+    ax.legend()
+    plt.tight_layout()
+    plt.savefig(CH / 'b09_amortized_boot.png', dpi=130)
+    plt.close()
+    print(f"  wrote {CH / 'b09_amortized_boot.png'}")
+
+def plot_b10_density():
+    """B10 — warm create & exec p50 as one host fills up."""
+    data = [json.loads(l)['summary'] for l in (RAW / 'b10_packing_density__hf-pool.jsonl').open()] if (RAW / 'b10_packing_density__hf-pool.jsonl').exists() else []
+    if not data:
+        return
+    by_d = {r['density']: r for r in data}
+    dens = sorted(by_d)
+    cre = [by_d[d]['warm_create_ms'].get('p50', 0) for d in dens]
+    exe = [by_d[d]['warm_exec_ms'].get('p50', 0) for d in dens]
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    ax.plot(dens, cre, marker='o', linewidth=2.5, label='warm create p50', color='#b15cff')
+    ax.plot(dens, exe, marker='s', linewidth=2.5, label='warm exec p50', color='#59a6ff')
+    ax.set_xlabel('sandboxes packed on one host')
+    ax.set_ylabel('latency p50 (ms)')
+    ax.set_ylim(bottom=0)
+    ax.set_title('B10 — Packing density: per-sandbox latency vs host fill')
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    plt.tight_layout()
+    plt.savefig(CH / 'b10_density.png', dpi=130)
+    plt.close()
+    print(f"  wrote {CH / 'b10_density.png'}")
+
+def plot_b12_noisy():
+    """B12 — victim exec p50 idle vs under co-resident CPU hogs."""
+    data = [json.loads(l)['summary'] for l in (RAW / 'b12_noisy_neighbor__hf-pool.jsonl').open()] if (RAW / 'b12_noisy_neighbor__hf-pool.jsonl').exists() else []
+    if not data:
+        return
+    s = data[-1]
+    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    labels = ['idle host', f"under {s['hogs']} hogs"]
+    vals = [s['idle_exec_ms'].get('p50', 0), s['loaded_exec_ms'].get('p50', 0)]
+    bars = ax.bar(labels, vals, color=['#7ddc6b', '#e05c5c'], width=0.55)
+    for b, v in zip(bars, vals):
+        ax.text(b.get_x() + b.get_width() / 2, v, f'{v:.0f}ms', ha='center', va='bottom', fontsize=10)
+    ax.set_ylabel('victim exec p50 (ms)')
+    ax.set_title(f"B12 — Noisy neighbor on {s.get('cores')}-core host (no cgroups): {s['p50_slowdown_pct']:+.0f}%")
+    plt.tight_layout()
+    plt.savefig(CH / 'b12_noisy_neighbor.png', dpi=130)
+    plt.close()
+    print(f"  wrote {CH / 'b12_noisy_neighbor.png'}")
+
 if __name__ == '__main__':
     plot_b01()
     plot_b04()
     plot_b03()
     plot_concurrency()
+    plot_b09_amortized()
+    plot_b10_density()
+    plot_b12_noisy()
     print('\nAll charts in', CH)
