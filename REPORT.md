@@ -92,33 +92,34 @@ boot time.**
 
 ## Full per-benchmark comparison (all contenders)
 
-| Benchmark / metric | E2B | hf-sandbox (PR #7) | hf-rust | MCP server | Winner |
-|---|---|---|---|---|---|
-| **B01 · Cold boot** create p50 | 360 ms | 15 827 ms | 5 928 ms | **910 ms**¹ | E2B (MCP 2nd) |
-| B01 · first-exec p50 | 261 ms | **145 ms** | 170 ms | 1 672 ms² | hf-sandbox |
-| **B01 · boot→ready p50** | **621 ms** | 15 965 ms | 6 098 ms | 2 563 ms² | E2B |
-| **B02 · Warm exec** throughput | 3.6 ops/s | **8.4 ops/s** | 6.0 ops/s | 3.0 ops/s | hf-sandbox |
-| B02 · exec p50 | 270 ms | **116 ms** | 164 ms | 314 ms | hf-sandbox |
-| B02 · exec p99 | 355 ms | **171 ms** | 226 ms | 427 ms | hf-sandbox |
-| **B03 · 10 MB write** | 3.52 MB/s | 10.05 MB/s | **26.99 MB/s** | ❌ no file primitive | **hf-rust** |
-| B03 · 1 MB write | 0.97 MB/s | **4.08 MB/s** | 3.20 MB/s | ❌ no file primitive | hf-sandbox |
-| **B03 · 10 MB read** | **33.84 MB/s** | 4.30 MB/s | 8.80 MB/s | ❌ no file primitive | E2B (~4× over hf-rust) |
-| **B04 · Concurrent create N=5** | 5/5 (100%) | 5/5 (100%) | 5/5 (100%) | 5/5 (100%) | tie |
-| B04 · N=5 wall | **2.1 s** | 16.6 s | 6.3 s | 2.9 s | E2B (MCP ~tied) |
-| **B04 · N=20** | 20/20 (100%) | 20/20 (100%) | 20/20 (100%) | 20/20 (100%) | tie |
-| B04 · N=20 wall | **2.2 s** | 69.5 s | 55.7 s | 2.9 s | E2B (MCP ~tied) |
-| **B04 · N=50 success** | 50/50 (100%) | 50/50 (100%) | 48/50 (96%) | 50/50 (100%) | E2B = hf = MCP |
-| B04 · N=50 wall | **2.1 s** | 191.2 s | 121.0 s | 3.1 s | E2B (MCP ~tied, both flat) |
-| B04 · N=50 errors | — | 0 | 2 boot-timeout | 0 | E2B = hf = MCP |
-| **B05 · Concurrent exec N=10** sandboxes ok | 10/10 | 10/10 | 10/10 | 10/10 | tie |
-| B05 · ops completed | 200/200 | 200/200 | 200/200 | 200/200 | tie |
-| B05 · worker p50 | 265 ms | **116 ms** | 170 ms | 220 ms | hf-sandbox |
-| B05 · worst worker p99 | 548 ms | **171 ms** | 294 ms | 1 625 ms | hf-sandbox |
-| B05 · wall | **6.8 s** | 19.0 s | 11.3 s | 12.0 s | E2B |
-| **B06 · 5-min stability** | 15/15 (100%) | 15/15 (100%) | 15/15 (100%) | 15/15 (100%) | tie |
-| B06 · ping p50 | **265 ms** | ~460 ms | ~720 ms | 849 ms² | E2B |
-| **B07 · max concurrency (100%)** | — | ~200 (cliff 500) | ~100 (cliff 200)⁴ | ~300 (B08, cliff 400) | — |
-| **Total cost** | ~$0.008 | ~$0.007 | ~$0.006 | n/a (endpoint uptime)³ | different model |
+| Benchmark / metric | E2B | hf-sandbox (PR #7) | hf-rust | hf-pool | MCP server | Winner |
+|---|---|---|---|---|---|---|
+| **B01 · Cold boot** create p50 | 360 ms | 15 827 ms | 5 928 ms | **119 ms warm** / 6 144 cold⁵ | **910 ms**¹ | hf-pool (warm) |
+| B01 · first-exec p50 | 261 ms | 145 ms | 170 ms | **120 ms** | 1 672 ms² | hf-pool≈hf-sandbox |
+| **B01 · boot→ready p50** | 621 ms | 15 965 ms | 6 098 ms | **239 ms warm**⁵ | 2 563 ms² | hf-pool (warm) / E2B (cold) |
+| **B02 · Warm exec** throughput | 3.6 ops/s | **8.4 ops/s** | 6.0 ops/s | 8.1 ops/s | 3.0 ops/s | hf-sandbox≈hf-pool |
+| B02 · exec p50 | 270 ms | **116 ms** | 164 ms | 122 ms | 314 ms | hf-sandbox≈hf-pool |
+| B02 · exec p99 | 355 ms | **171 ms** | 226 ms | 133 ms | 427 ms | hf-pool≈hf-sandbox |
+| **B03 · 10 MB write** | 3.52 MB/s | 10.05 MB/s | **26.99 MB/s** | 6.65 MB/s | ❌ no file primitive | **hf-rust** |
+| B03 · 1 MB write | 0.97 MB/s | 4.08 MB/s | 3.20 MB/s | **4.41 MB/s** | ❌ no file primitive | hf-pool |
+| **B03 · 10 MB read** | **33.84 MB/s** | 4.30 MB/s | 8.80 MB/s | 3.45 MB/s | ❌ no file primitive | E2B (~4× over hf-rust) |
+| **B04 · Concurrent create N=5** | 5/5 (100%) | 5/5 (100%) | 5/5 (100%) | 5/5 (100%) | 5/5 (100%) | tie |
+| B04 · N=5 wall | **2.1 s** | 16.6 s | 6.3 s | 7.3 s | 2.9 s | E2B (MCP ~tied) |
+| **B04 · N=20** | 20/20 (100%) | 20/20 (100%) | 20/20 (100%) | 20/20 (100%) | 20/20 (100%) | tie |
+| B04 · N=20 wall | **2.2 s** | 69.5 s | 55.7 s | 60.9 s | 2.9 s | E2B (MCP ~tied) |
+| **B04 · N=50 success** | 50/50 (100%) | 50/50 (100%) | 48/50 (96%) | 50/50 (100%) | 50/50 (100%) | E2B = hf = hf-pool = MCP |
+| B04 · N=50 wall | **2.1 s** | 191.2 s | 121.0 s | 79.1 s⁵ | 3.1 s | E2B (MCP ~tied, both flat) |
+| B04 · N=50 errors | — | 0 | 2 boot-timeout | 0 | 0 | E2B = hf = hf-pool = MCP |
+| **B05 · Concurrent exec N=10** sandboxes ok | 10/10 | 10/10 | 10/10 | 10/10 | 10/10 | tie |
+| B05 · ops completed | 200/200 | 200/200 | 200/200 | 200/200 | 200/200 | tie |
+| B05 · worker p50 | 265 ms | **116 ms** | 170 ms | 122 ms | 220 ms | hf-sandbox≈hf-pool |
+| B05 · worst worker p99 | 548 ms | 171 ms | 294 ms | **180 ms** | 1 625 ms | hf-pool≈hf-sandbox |
+| B05 · wall | **6.8 s** | 19.0 s | 11.3 s | 52.5 s | 12.0 s | E2B |
+| **B06 · 5-min stability** | 15/15 (100%) | 15/15 (100%) | 15/15 (100%) | 15/15 (100%) | 15/15 (100%) | tie |
+| B06 · ping p50 | **265 ms** | ~460 ms | ~720 ms | ~500 ms | 849 ms² | E2B |
+| **B07 · max concurrency (100%)** | — | ~200 (cliff 500) | ~100 (cliff 200)⁴ | packing race ≥conc 50⁵ | ~300 (B08, cliff 400) | — |
+| **Packing density** | 1/VM | 1/Job | 1/VM | **100/host** (paced)⁵ | sessions/endpoint | hf-pool |
+| **Total cost** | ~$0.008 | ~$0.007 | ~$0.006 | ~$0.001 (amortized)⁵ | n/a (endpoint uptime)³ | hf-pool (amortized) |
 
 ¹ MCP "create" = opening a session on an *already-running* endpoint — no VM/Job to
 provision. First session after a scale-from-zero adds a one-time ~5s; warm it's ~0.9s.
@@ -131,6 +132,14 @@ are a wrapper artifact, not the engine. ³ MCP is billed by **endpoint uptime**
 a **120s ready-timeout** vs hf-sandbox's 300s — under the same HF Jobs scheduler
 waves, more boots time out before the shorter window closes (it's not a worse
 backend; a longer timeout would lift the ceiling).
+⁵ **hf-pool is host/pool mode** — numbers reflect its split personality: the *first*
+sandbox on a host pays the ~6s VM cold start, every *subsequent* one is ~120–250 ms
+(B01's 5 runs share one host, so its p50s are warm; B04's concurrent bursts re-pay
+cold starts, hence the higher walls). Packing to 100/host and the ~$0.001 amortized
+cost only hold when `create()` is **paced** — under concurrent bursts a host-reuse
+race spawns ~1 host/sandbox, so the B07 ramp ≥50 and the 1000-scale-out (B13) did
+**not** reproduce upstream's "20 hosts / 16s." See
+[Contender 5](#contender-5-hf-pool-host-mode) and [B13](#b13--1000-sandbox-scale-out-did-not-reproduce-20-hosts--16-s).
 
 ---
 
