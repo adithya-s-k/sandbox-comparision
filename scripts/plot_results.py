@@ -12,9 +12,22 @@ CH.mkdir(parents=True, exist_ok=True)
 COLOR = {'e2b': '#59a6ff', 'hf': '#ffa05c', 'hf-rust': '#e05c5c', 'hf-pool': '#b15cff', 'mcp': '#7ddc6b'}
 PROVIDERS = ['e2b', 'hf', 'hf-rust', 'hf-pool', 'mcp']
 
+import os
+SINCE = float(os.getenv('PLOT_SINCE', '0'))  # filter to runs at/after this epoch
+
+
 def load(bench, provider):
     p = RAW / f'{bench}__{provider}.jsonl'
-    return [json.loads(l) for l in open(p)] if p.exists() else []
+    if not p.exists():
+        return []
+    out = []
+    for l in open(p):
+        r = json.loads(l)
+        ts = r.get('ts') or (r.get('summary') or {}).get('ts', 0)
+        if SINCE and ts and ts < SINCE:
+            continue
+        out.append(r)
+    return out
 
 def plot_b01():
     fig, ax = plt.subplots(figsize=(8, 4))

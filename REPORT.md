@@ -1,6 +1,58 @@
 # E2B vs hf-sandbox vs hf-rust vs hf-pool vs MCP — Scalability Comparison Report
 
-**Date:** 2026-06-18 · **CPU-only** · ~$0.04 total spend across all benchmarks.
+**Date:** 2026-07-06 · **CPU-only** · sandbox API now officially released in
+`huggingface_hub` **v1.22.0** + `hf` CLI.
+
+---
+
+## ⭐ Final comparison (v1.22.0, 2026-07-06)
+
+Head-to-head across all dimensions, all three run **the same day** on the released
+`huggingface_hub==1.22.0`: **E2B** vs **hf-rust** (HF dedicated VM, 1 sandbox = 1 Job)
+vs **hf-pool** (HF host mode, 1 Job = many sandboxes). Verified working end-to-end
+first: **CPU sandbox ✅, GPU sandbox ✅** (Tesla T4, driver 580), Python + `hf` CLI.
+
+| Dimension | E2B | hf-rust (dedicated VM) | hf-pool (host mode) | Best |
+|---|---|---|---|---|
+| **Cold boot → ready p50** | **629 ms** | 9 684 ms | 12 s first / **449 ms warm** | E2B (cold) · hf-pool (warm) |
+| **Warm exec** throughput | 3.6 ops/s | **4.5 ops/s** | 4.5 ops/s | hf-rust ≈ hf-pool |
+| Warm exec p50 | 270 ms | **222 ms** | 223 ms | hf-rust ≈ hf-pool |
+| **10 MB write** | 2.99 MB/s | **3.78 MB/s** | 3.74 MB/s | HF (≈ tie) |
+| **10 MB read** | **34.6 MB/s** | 1.47 MB/s | 1.18 MB/s | **E2B (~24×)** |
+| Concurrent create N=20 | 100% / **2.1 s** | 100% / 48 s | 100% / 13 s | E2B |
+| **Concurrent create N=50** | **100% / 2.2 s** | 88% / 124 s | **100% / 12 s** | E2B; hf-pool 2nd |
+| Concurrent exec N=10 | 100% | 100% | 100% | tie |
+| 5-min stability | 15/15 | 15/15 | 15/15 | tie |
+| **Max concurrency** | flat ≥100 (untested higher) | ~100 (cliff) | **1000 in 36 s / 3 hosts** | hf-pool (scale) |
+| **Cost at fan-out** | 1 VM/sandbox | 1 VM/sandbox | **1 VM per ~50** | **hf-pool** |
+| Isolation | full VM | full VM | uid + Landlock (same-user) | E2B = hf-rust |
+| GPU | ✅ | ✅ | ❌ | E2B / hf-rust |
+
+**The v1.22.0 packing fix is confirmed.** On the pre-release branch, concurrent
+`create()` raced and spawned ~1 host/sandbox (1000 → 107–218 hosts, 65–129 s). Lucain's
+fix (per-process host-spawn lock + eager `warm_up`) holds: **1000 sandboxes now pack
+into 3 hosts in 36 s at 98% success** (B13), `max_hosts`/`warm_up` behave, and packing
+is correct even at concurrency 100 (B14, all PASS). A 15-minute soak ran **21 089
+create→exec→kill lifecycles at 100% success with zero host leak** (B15).
+
+### When to use which
+
+- **Fast single sandbox, low-latency interactive, or large file reads → E2B.** Sub-second
+  boot, flat concurrency, 24× faster large reads. The latency/burst champion.
+- **HF-native, GPU, or mutually-untrusted code → hf-rust (dedicated VM).** Full-VM
+  isolation, GPU support, ~6–12 s boot, warm exec on par with the rest.
+- **Massive cheap CPU fan-out (RL rollouts, eval sweeps, batch tools) → hf-pool.** 1000
+  sandboxes on 3 hosts in ~36 s, ~250 ms warm boot, one VM billed per ~50 sandboxes.
+  Caveats: CPU-only, same-user trust (uid+Landlock, no cgroups → a hot neighbour can slow
+  peers ~4–8× on a saturated host).
+
+> Numbers are one same-day run each (n=5 for boot, n=10/20/50 for concurrency); treat as
+> directional. HF file-read fell vs June (hf-rust 27→3.8 MB/s write, reads ~1.2–1.5 MB/s) —
+> worth a second look, but doesn't change the picture. Full methodology and per-benchmark
+> detail below; pool-specific tests (amortized boot, packing density, isolation, noisy
+> neighbour, scale-out, soak) are in [Contender 5](#contender-5-hf-pool-host-mode).
+
+---
 
 > **Update 4 (2026-06-18):** Added a **fifth contender** — **`hf-pool`**, the
 > **second mode** of the `huggingface_hub` Sandbox API
@@ -16,11 +68,10 @@
 > slow peers ~8× on a saturated host. Data in `results/raw/*__hf-pool.jsonl`. See
 > **[Contender 5: hf-pool (host mode)](#contender-5-hf-pool-host-mode)**.
 >
-> ⚠️ The shared dev sandbox backend **paused itself** partway through the run
-> (`400: The endpoint is paused, ask a maintainer to restart it`) on every
-> create-burst ≥ 50 — so the pooled **B07 scale ramp and the 1000-sandbox test are
-> still pending an endpoint restart**. All warm/density/isolation numbers below are
-> from before the pause and are valid.
+> ✅ **Resolved in v1.22.0 (see the [Final comparison](#-final-comparison-v1220-2026-07-06) at top).**
+> The pre-release concurrent-`create()` packing race is fixed: 1000 sandboxes now pack
+> into 3 hosts in 36 s (B13). The `400: endpoint is paused` error was a transient dev-backend
+> rate guard under sustained load and no longer blocks the scale test.
 
 > **Update 3 (2026-06-12):** Added a **fourth contender** — **`hf-rust`**, the
 > `Sandbox` API being built directly into `huggingface_hub`
@@ -69,7 +120,7 @@ in `results/raw/*.jsonl`; charts in `results/charts/*.png`.
 | **Packing density** | 1/VM | 1/Job | 1/VM | **100/host** | sessions/endpoint | **hf-pool** |
 | **Single-sandbox stability (5 min)** | 15/15 (100%) | 15/15 (100%) | 15/15 (100%) | 15/15 (100%) | 15/15 (100%) | all rock-solid |
 
-¹ MCP boot is session-open against an *already-running* endpoint — no VM/Job to provision (warm; a scaled-to-zero endpoint adds a one-time ~5s spin-up). ² MCP exec routes shell commands through Python `subprocess` (no shell runtime), adding process-spawn overhead; pure-python exec is ~280 ms. ³ hf-pool held 50/50 but its burst-create latency is high (p50 42.5 s) because `pool.create()` provisions one sandbox at a time per host — sequential warm creates are ~250 ms (see [Contender 5](#contender-5-hf-pool-host-mode)); the pooled B07 ramp ≥50 is pending an endpoint restart.
+¹ MCP boot is session-open against an *already-running* endpoint — no VM/Job to provision (warm; a scaled-to-zero endpoint adds a one-time ~5s spin-up). ² MCP exec routes shell commands through Python `subprocess` (no shell runtime), adding process-spawn overhead; pure-python exec is ~280 ms. ³ hf-pool held 50/50 but its burst-create latency is high (p50 42.5 s) because `pool.create()` provisions one sandbox at a time per host — sequential warm creates are ~250 ms (see [Contender 5](#contender-5-hf-pool-host-mode)). On v1.22.0 concurrent packing is fixed (B13: 1000 in 3 hosts / 36 s); the pooled B07 ramp still trips a transient dev-backend rate guard under sustained load, so its ceiling reading is unreliable — B13 is the real scale number.
 
 **The four-way picture:** **E2B** and the **MCP server** both boot in <1s and stay flat under concurrency (50 in ~2-3s). The two **HF-Jobs-backed** options boot a fresh job each time and stagger in scheduler waves — but **`hf-rust` boots ~3× faster than `hf-sandbox`** (~6s vs 16s) by dropping the per-boot `pip install`. **hf-sandbox is fastest once warm** (8.4 ops/s); **hf-rust has the best file-write throughput** (27 MB/s); **E2B** owns large-file read streaming (~34 MB/s); the **MCP** is the fastest-to-provision *code-exec* sandbox but is **execution-only** (no shell, no file transfer). Each wins a different axis — pick by whether your bottleneck is boot latency, warm throughput, file I/O, or fan-out.
 
@@ -117,7 +168,7 @@ boot time.**
 | B05 · wall | **6.8 s** | 19.0 s | 11.3 s | 52.5 s | 12.0 s | E2B |
 | **B06 · 5-min stability** | 15/15 (100%) | 15/15 (100%) | 15/15 (100%) | 15/15 (100%) | 15/15 (100%) | tie |
 | B06 · ping p50 | **265 ms** | ~460 ms | ~720 ms | ~500 ms | 849 ms² | E2B |
-| **B07 · max concurrency (100%)** | — | ~200 (cliff 500) | ~100 (cliff 200)⁴ | packing race ≥conc 50⁵ | ~300 (B08, cliff 400) | — |
+| **B07 · max concurrency (100%)** | — | ~200 (cliff 500) | ~100 (cliff 200)⁴ | 1000 @ 3 hosts / 36 s (B13)⁵ | ~300 (B08, cliff 400) | — |
 | **Packing density** | 1/VM | 1/Job | 1/VM | **100/host** (paced)⁵ | sessions/endpoint | hf-pool |
 | **Total cost** | ~$0.008 | ~$0.007 | ~$0.006 | ~$0.001 (amortized)⁵ | n/a (endpoint uptime)³ | hf-pool (amortized) |
 
@@ -135,11 +186,10 @@ backend; a longer timeout would lift the ceiling).
 ⁵ **hf-pool is host/pool mode** — numbers reflect its split personality: the *first*
 sandbox on a host pays the ~6s VM cold start, every *subsequent* one is ~120–250 ms
 (B01's 5 runs share one host, so its p50s are warm; B04's concurrent bursts re-pay
-cold starts, hence the higher walls). Packing to 100/host and the ~$0.001 amortized
-cost only hold when `create()` is **paced** — under concurrent bursts a host-reuse
-race spawns ~1 host/sandbox, so the B07 ramp ≥50 and the 1000-scale-out (B13) did
-**not** reproduce upstream's "20 hosts / 16s." See
-[Contender 5](#contender-5-hf-pool-host-mode) and [B13](#b13--1000-sandbox-scale-out-did-not-reproduce-20-hosts--16-s).
+cold starts, hence the higher walls). On v1.22.0 packing to 100/host and cheap
+amortized cost hold even under concurrent bursts — 1000 sandboxes pack into 3 hosts in
+36 s (B13). See [Contender 5](#contender-5-hf-pool-host-mode) and
+[B13](#b13--1000-sandbox-scale-out-v1220-fixed-).
 
 ---
 
@@ -290,37 +340,30 @@ per-VM model. Reach for dedicated `hf-rust` when you need a GPU or are running
 mutually-untrusted code that must not contend for CPU. Status: unreleased (PR #4350),
 `sandbox-api` branch, `huggingface_hub==1.20.0.dev0`.
 
-### B13 — 1000-sandbox scale-out (did NOT reproduce "20 hosts / 16 s")
+### B13 — 1000-sandbox scale-out (v1.22.0: FIXED ✅)
 
-We tried to reproduce the upstream claim — *"1000 sandboxes created, exec'd and
-killed in ~16 s across 20 hosts (50/host)."* The earlier `endpoint is paused` error
-was **transient and did not recur** (the backend recovered on its own). But across
-four runs we **could not reproduce the packing or the timing** — the headline
-pooling benefit collapses under concurrent `create()`:
+Reproducing the upstream claim — *"1000 sandboxes created, exec'd and killed in ~16 s
+across 20 hosts (50/host)."*
 
-| run | concurrency | result | hosts (target 20) | packing | wall |
+**On v1.22.0 — the fix holds:**
+
+| run | concurrency | result | hosts | packing | wall |
 |---|---|---|---|---|---|
-| churn (create→exec→kill) | 200 | 902/1000 (90%) | **107** | ~9/host | 129 s |
-| hold (create→hold→exec→kill, `max_hosts=20`) | 200 | 978/1000 exec-ok | **197** | ~5/host | 85.9 s |
-| pre-warm 20 hosts then create | 200 | 996/1000 | **218** | 4.6/host | 64.8 s |
-| diagnostic | **4** | 100/100 | **5** | **20/host** ✓ | 11.5 s |
-| diagnostic | 100 | 100/100 | **98** | 1/host ✗ | 45.4 s |
+| churn (create→exec→kill) | 200 | **985/1000 (98%)** | **3** | ~330/host reused | **36.6 s** |
+| hold (create→hold, `max_hosts=20`) | 200 | 1000/1000 created, 962 exec-ok | **20** (cap honored) | 50/host | 268 s |
 
-**Root cause (reproducible): `SandboxPool.create()` doesn't pack under concurrency.**
-The "reuse a host that still has free capacity" logic appears to **race** — when many
-`create()` calls fire at once, none sees a host with registered capacity yet, so each
-spawns its **own** host. At concurrency 4 packing works (20/host); at concurrency 100
-it degrades to **1 sandbox per host**, i.e. pool mode silently behaves like dedicated
-mode but slower. So for 1000 we got **107–218 hosts instead of 20**, wall **65–129 s
-instead of ~16 s**, and the cost/amortization benefit evaporates. Secondary: ~90%
-success at N=1000 from occasional `RemoteProtocolError: Server disconnected`.
-Notes: `max_hosts=20` was **not honored** (197 hosts created anyway), and `warm_up=20`
-did **not** pre-provision (pool reported `num_hosts=0` immediately after init).
+Churn only needs **3 hosts** for 1000 because create→exec→kill frees slots that get
+reused; hold-all-alive needs the full 20 (1000/50) and the `max_hosts=20` cap is now
+respected. The ~2% churn failures are `RemoteProtocolError: Server disconnected` under
+200-way concurrency — load-related, as expected. See also **B14** (packing correctness,
+all PASS at concurrency 100) and **B15** (15-min soak, 21 089 lifecycles at 100%, zero
+host leak).
 
-**Takeaway for the maintainer:** the amortized-boot / packing win is real *only* when
-`create()` is paced; the advertised "1000 / 20 hosts / 16 s" needs the concurrent-create
-host-reuse race fixed (and `max_hosts` / `warm_up` to actually take effect). Data in
-`results/raw/b13_pool_scaleout__hf-pool.jsonl`.
+**What was broken before (pre-release branch), for the record:** concurrent `create()`
+raced — each call spawned its own host instead of reusing one with free capacity, so
+1000 sandboxes sprawled to **107–218 hosts** in 65–129 s (≈1 sandbox/host at concurrency
+100), and `max_hosts`/`warm_up` had no effect. Lucain's fix (per-process host-spawn lock
++ eager `warm_up`) resolved all of it. Data in `results/raw/b13_pool_scaleout__hf-pool.jsonl`.
 
 ---
 

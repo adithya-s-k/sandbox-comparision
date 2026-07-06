@@ -6,6 +6,10 @@ set -a; source .env; set +a
 
 log() { echo "[$(date +%H:%M:%S)] $*"; }
 
+# ── B14 first: correctness of the v1.22 fixes (warm_up / max_hosts / packing) ──
+log "B14 pool correctness (warm_up / max_hosts / packing)"
+python benchmarks/b14_pool_correctness.py
+
 # ── Phase A: uniform b01–b07 column (same shape as other providers) ──
 log "B01 boot latency (n=5)"
 python benchmarks/b01_boot_latency.py --provider hf-pool --n 5
@@ -42,5 +46,13 @@ python benchmarks/b11_isolation.py
 
 log "B12 noisy neighbour (24 hogs — oversubscribe the ~16-core host)"
 python benchmarks/b12_noisy_neighbor.py --hogs 24
+
+# ── Reliability round (v1.22) ──
+log "B13 scale-out 1000 (churn) + hold-mode"
+python benchmarks/b13_pool_scaleout.py --total 1000 --concurrency 200 --sandboxes-per-host 50 --probe 25
+python benchmarks/b13_pool_scaleout.py --total 1000 --concurrency 200 --sandboxes-per-host 50 --max-hosts 20 --hold --probe 0
+
+log "B15 soak (15 min churn, concurrency 20)"
+python benchmarks/b15_soak.py --minutes 15 --concurrency 20
 
 log "DONE"

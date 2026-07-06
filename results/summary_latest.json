@@ -1,0 +1,65 @@
+{
+  "e2b": {
+    "b01_boot_ready_p50_ms": 628.9249160327017,
+    "b01_create_min_ms": 319.6460830513388,
+    "b01_create_max_ms": 641.3054580334574,
+    "b02_ops_per_s": 3.55,
+    "b02_exec_p50_ms": 270,
+    "b03_10mb_write_mbs": 2.99,
+    "b03_10mb_read_mbs": 34.59,
+    "b04_n5_success": 100,
+    "b04_n5_wall_s": 1.3,
+    "b04_n20_success": 100,
+    "b04_n20_wall_s": 2.1,
+    "b04_n50_success": 100,
+    "b04_n50_wall_s": 2.2,
+    "b05_success": 100,
+    "b06_pings": "15/15"
+  },
+  "hf-rust": {
+    "b01_boot_ready_p50_ms": 9684.061625041068,
+    "b01_create_min_ms": 8599.58854096476,
+    "b01_create_max_ms": 11732.784084044397,
+    "b02_ops_per_s": 4.5,
+    "b02_exec_p50_ms": 222,
+    "b03_10mb_write_mbs": 3.78,
+    "b03_10mb_read_mbs": 1.47,
+    "b04_n5_success": 100,
+    "b04_n5_wall_s": 10.6,
+    "b04_n20_success": 100,
+    "b04_n20_wall_s": 48.1,
+    "b04_n50_success": 88,
+    "b04_n50_wall_s": 124.3,
+    "b05_success": 100,
+    "b06_pings": "15/15"
+  },
+  "hf-pool": {
+    "b01_boot_ready_p50_ms": 448.8301669480279,
+    "b01_create_min_ms": 223.6742499517277,
+    "b01_create_max_ms": 11988.276917021722,
+    "b02_ops_per_s": 4.47,
+    "b02_exec_p50_ms": 223,
+    "b03_10mb_write_mbs": 3.74,
+    "b03_10mb_read_mbs": 1.18,
+    "b04_n5_success": 100,
+    "b04_n5_wall_s": 11.5,
+    "b04_n20_success": 100,
+    "b04_n20_wall_s": 13.3,
+    "b04_n50_success": 100,
+    "b04_n50_wall_s": 12.1,
+    "b05_success": 100,
+    "b06_pings": "15/15"
+  },
+  "hf": {
+    "b02_ops_per_s": 0,
+    "b02_exec_p50_ms": 0,
+    "b05_success": 0,
+    "b06_pings": "?/?"
+  },
+  "mcp": {
+    "b02_ops_per_s": 0,
+    "b02_exec_p50_ms": 0,
+    "b05_success": 0,
+    "b06_pings": "?/?"
+  }
+}
