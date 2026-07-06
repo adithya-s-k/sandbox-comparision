@@ -50,7 +50,7 @@ def main() -> None:
     for i in range(args.hogs):
         h = HFPoolAdapter()
         if h.create().ok:
-            h.handle.spawn(HOG, tag=f'hog{i}')
+            h.handle.run(HOG, background=True)  # v1.22: spawn() replaced by run(background=True)
             hogs.append(h)
     same_host = all(getattr(h.handle, 'host_id', None) == getattr(victim.handle, 'host_id', None) for h in hogs)
     print(f'[phase 2] {len(hogs)} hogs spawned (same_host={same_host}); measuring victim under load…')

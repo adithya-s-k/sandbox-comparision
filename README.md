@@ -97,6 +97,9 @@ python benchmarks/b09_amortized_boot.py   --densities 10,25,50 --n 20  # first-v
 python benchmarks/b10_packing_density.py  --densities 1,10,25,50,100   # latency vs host fill
 python benchmarks/b11_isolation.py                                     # uid + Landlock checks
 python benchmarks/b12_noisy_neighbor.py   --hogs 24                    # no-cgroups contention
+python benchmarks/b13_pool_scaleout.py    --total 1000 --concurrency 200  # scale-out (1000 sandboxes)
+python benchmarks/b14_pool_correctness.py                              # warm_up / max_hosts / packing
+python benchmarks/b15_soak.py             --minutes 30 --concurrency 20   # sustained churn / leak watch
 
 # Full batteries:
 bash scripts/run_hf_pr7.sh
